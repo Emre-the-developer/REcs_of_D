@@ -9,12 +9,16 @@ cur = con.cursor()
 
 # Importing expected columns and checking
 data = pd.read_csv(r"C:\Users\emref\Desktop\C13digihome\REcs_of_D\REcs_of_D_trydata3.csv")
+data_sorted = data.sort_values(by='Scoredby', ascending=False)
 
 expected_columns = ['Title', 'Genre', 'Synopsis', 'Type', 'Studio', 'Rating', 'Scoredby', 'Episodes', 'Source', 'Aired', 'Image_url']
-missing_columns = [col for col in expected_columns if col not in data.columns]
+missing_columns = [col for col in expected_columns if col not in data_sorted.columns]
 if missing_columns:
     st.error(f"Missing columns in the CSV file: {missing_columns}")
     st.stop()
+
+# Ensure 'Title' column has no None values
+data_sorted['Title'] = data_sorted['Title'].fillna('Unknown Title')
 
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
@@ -22,7 +26,7 @@ st.set_page_config(page_title="Movie Recommender", layout="wide")
 if "watched_movies" not in st.session_state:
     st.session_state.watched_movies = []
 if "tags" not in st.session_state:
-    st.session_state.tags = {row['Title']: "" for _, row in data.iterrows()}
+    st.session_state.tags = {row['Title']: "" for _, row in data_sorted.iterrows()}
 if "show_watched_list" not in st.session_state:
     st.session_state.show_watched_list = False
 if "current_user" not in st.session_state:
@@ -34,18 +38,31 @@ if "page" not in st.session_state:
 def toggle_watched_list():
     st.session_state.show_watched_list = not st.session_state.show_watched_list
 
-def create_movietable():
-    cur.execute('CREATE TABLE IF NOT EXISTS movietable(username TEXT, title TEXT, rating INTEGER, state INTEGER)')
+def create_animetable():
+    cur.execute('CREATE TABLE IF NOT EXISTS movietable(username TEXT, title TEXT, rating INTEGER, state INTEGER, episodes_watched INTEGER)')
     con.commit()
 
-def add_moviedata(username, title, rating, state):
-    cur.execute('INSERT INTO movietable(username, title, rating, state) VALUES (?, ?, ?, ?)', (username, title, rating, state))
+def add_animedata(username, title, rating, state, episodes_watched):
+    cur.execute('INSERT INTO movietable(username, title, rating, state, episodes_watched) VALUES (?, ?, ?, ?, ?)', (username, title, rating, state, episodes_watched))
     con.commit()
 
 def show_user_list(username):
     cur.execute('SELECT * FROM movietable WHERE username =?', (username,))
     data = cur.fetchall()
     return data
+
+def registered_title_check(username, title):
+    cur.execute('SELECT * FROM movietable WHERE username =? AND title =?', (username, title))
+    data = cur.fetchall()
+    return data
+
+# Function to render movie images with different sizes
+def render_movie_image(image_url, size="small"):
+    if size == "large":
+        width = 200  # Larger image size
+    else:
+        width = 100  # Smaller image size
+    return f'<img src="{image_url}" alt="Movie Image" width="{width}">'
 
 # Showing home page
 def show_home_page(user_name):
@@ -70,7 +87,7 @@ def show_home_page(user_name):
         st.subheader('Watched Movies')
         sorted_movies = sorted(show_user_list(user_name), key=lambda x: -x[2])
         for movie in sorted_movies:
-            st.write(f"{movie[1]} - {movie[2]} stars")
+            st.write(f"{movie[1]} - {movie[2]} stars, {movie[4]} episodes watched")
             if st.button(f'Remove {movie[1]} from Watched List', key=f'remove-{movie[1]}'):
                 st.session_state.watched_movies = [m for m in st.session_state.watched_movies if m['title'] != movie[1]]
                 st.success(f'{movie[1]} removed from watched list!')
@@ -113,12 +130,16 @@ def show_home_page(user_name):
     """, unsafe_allow_html=True)
 
     search_query = st.text_input("", key="search_input", label_visibility="collapsed").lower()
-    filtered_data = data[data['Title'].str.lower().str.contains(search_query)]
+    filtered_data = data_sorted[data_sorted['Title'].str.lower().str.contains(search_query)]
 
-    # Pagination
+    # Page size is adjustable
     page_size = 12
+    # Calculate the total number of pages
     total_pages = len(filtered_data) // page_size + 1
-    current_page = st.number_input("Change Page", min_value=1, max_value=total_pages, format="%d")
+    # Get the current page number from user input
+    st.write("Change Page")
+    current_page = st.number_input("Page", min_value=1, max_value=total_pages, format="%d", placeholder="Load more")
+    # Calculate the start and end indices for the current page
     start_index = (current_page - 1) * page_size
     end_index = min(start_index + page_size, len(filtered_data))
 
@@ -126,9 +147,7 @@ def show_home_page(user_name):
         row = filtered_data.iloc[index]
         st.markdown(f"""
             <div class="movie-container">
-                <div class="movie-image">
-                    <img src="{row['Image_url']}" alt="Movie Image" width="100">
-                </div>
+                {render_movie_image(row['Image_url'], size="large")}  <!-- Large image on home page -->
                 <div class="movie-info">
                     <div class="movie-title">{row['Title']}</div>
                     <div>{row['Rating']} stars</div>
@@ -152,26 +171,32 @@ def show_home_page(user_name):
             </div>
         """, unsafe_allow_html=True)
 
-        # Rating system
-        create_movietable()
+        # Rating and episodes system
+        create_animetable()
         rating = st.selectbox(f'Rate {row["Title"]}:', [1, 2, 3, 4, 5], key=f'rating-{index}')
         states = ["Continuing", "Completed", "On-Hold", "Dropped", "Plan to Watch"]
         statebox = st.selectbox(f"State of {row['Title']}", states, key=f'state_{index}')
         state_index = states.index(statebox)
-        if st.button(f'Save Rating and State {row["Title"]}', key=f'save-{index}'):
-            add_moviedata(st.session_state.current_user[0], row["Title"], rating, state_index)
-            st.success('Rating saved and movie marked as watched!')
+        episode_count = st.selectbox(f'Episodes Watched for {row["Title"]}:', range(0, row["Episodes"] + 1), key=f'episodes_{index}')
+        
+        title_check = registered_title_check(user_name, row["Title"])
+        if title_check:
+            continue
+        else:
+            if st.button(f'Save Rating and State for {row["Title"]}', key=f'save-{index}'):
+                add_animedata(user_name, row["Title"], rating, state_index, episode_count)
+                st.success('Rating, state, and episodes watched saved!')
 
 # User authentication functions
 def create_usertable():
     cur.execute('CREATE TABLE IF NOT EXISTS userstable(username TEXT, email TEXT, password TEXT)')
     
 def add_userdata(username, email, password):
-    cur.execute('INSERT INTO userstable(username, email, password) VALUES (?, ?, ?, ?)', (username, email, password))
+    cur.execute('INSERT INTO userstable(username, email, password) VALUES (?, ?, ?)', (username, email, password))
     con.commit()
 
 def login_user(username, password):
-    cur.execute('SELECT * FROM userstable WHERE username =? AND password =? ', (username, password))
+    cur.execute('SELECT * FROM userstable WHERE username =? AND password =?', (username, password))
     data = cur.fetchall()
     return data
 
@@ -274,7 +299,6 @@ st.markdown("""
     }
     .movie-image img {
         border-radius: 10px;
-        width: 100px;  /* Adjust the size of the image */
         margin-right: 20px;  /* Space between the image and the info */
     }
     .movie-info {
