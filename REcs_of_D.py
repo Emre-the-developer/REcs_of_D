@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import streamlit as st
 import sqlite3
@@ -48,6 +49,12 @@ def show_user_list(username):
 
 # Showing home page
 def show_home_page(user_name):
+    # Temporary Welcome Message
+    welcome_placeholder = st.empty()
+    welcome_placeholder.markdown(f"<h2>Welcome {user_name}!</h2>", unsafe_allow_html=True)
+    time.sleep(2)  # Show the message for 2 seconds
+    welcome_placeholder.empty()  # Clear the welcome message
+
     st.markdown(f"""
         <div class="header-container">
             <div>{user_name}</div>
@@ -69,7 +76,43 @@ def show_home_page(user_name):
                 st.success(f'{movie[1]} removed from watched list!')
         return
     
-    search_query = st.text_input("Search for a movie", key="search_input").lower()
+    # Remodeled search bar with icon and styling
+    st.markdown("""
+        <div class="search-container">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="search_input" placeholder="Search for a movie...">
+        </div>
+        <style>
+            .search-container {
+                position: relative;
+                width: 50%;
+                margin-bottom: 20px;
+            }
+            .search-icon {
+                position: absolute;
+                top: 50%;
+                left: 10px;
+                transform: translateY(-50%);
+                color: #FF9900;
+                font-size: 20px;
+            }
+            #search_input {
+                width: 100%;
+                padding: 10px 10px 10px 35px;
+                border-radius: 20px;
+                border: 2px solid #FF9900;
+                background-color: #333333;
+                color: #FFFFFF;
+                font-size: 16px;
+            }
+            #search_input:focus {
+                outline: none;
+                border-color: #FF6600;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    search_query = st.text_input("", key="search_input", label_visibility="collapsed").lower()
     filtered_data = data[data['Title'].str.lower().str.contains(search_query)]
 
     # Pagination
@@ -83,23 +126,21 @@ def show_home_page(user_name):
         row = filtered_data.iloc[index]
         st.markdown(f"""
             <div class="movie-container">
-                <div class="movie-title">{row['Title']}</div>
-                <div class="movie-details">
-                    <div class="movie-image">
-                        <img src="{row['Image_url']}" alt="Movie Image" width="200">
-                    </div>
-                    <div class="movie-info">
-                        <div>{row['Rating']} stars</div>
-                        <div>Genres: {row['Genre']}</div>
-                        <div>Synopsis: {row['Synopsis']}</div>
-                        <div>Type: {row['Type']}</div>
-                        <div>Studio: {row['Studio']}</div>
-                        <div>Scored by: {row['Scoredby']}</div>
-                        <div>Episodes: {row['Episodes']}</div>
-                        <div>Source: {row['Source']}</div>
-                        <div>Aired: {row['Aired']}</div>
-                        <div class="edit-link" onClick="document.getElementById('edit-form-{index}').style.display = 'block';">Edit</div>
-                    </div>
+                <div class="movie-image">
+                    <img src="{row['Image_url']}" alt="Movie Image" width="100">
+                </div>
+                <div class="movie-info">
+                    <div class="movie-title">{row['Title']}</div>
+                    <div>{row['Rating']} stars</div>
+                    <div>Genres: {row['Genre']}</div>
+                    <div>Synopsis: {row['Synopsis']}</div>
+                    <div>Type: {row['Type']}</div>
+                    <div>Studio: {row['Studio']}</div>
+                    <div>Scored by: {row['Scoredby']}</div>
+                    <div>Episodes: {row['Episodes']}</div>
+                    <div>Source: {row['Source']}</div>
+                    <div>Aired: {row['Aired']}</div>
+                    <div class="edit-link" onClick="document.getElementById('edit-form-{index}').style.display = 'block';">Edit</div>
                 </div>
                 <div id="edit-form-{index}" style="display:none;">
                     <form>
@@ -126,7 +167,7 @@ def create_usertable():
     cur.execute('CREATE TABLE IF NOT EXISTS userstable(username TEXT, email TEXT, password TEXT)')
     
 def add_userdata(username, email, password):
-    cur.execute('INSERT INTO userstable(username, email, password) VALUES (?, ?, ?)', (username, email, password))
+    cur.execute('INSERT INTO userstable(username, email, password) VALUES (?, ?, ?, ?)', (username, email, password))
     con.commit()
 
 def login_user(username, password):
@@ -162,25 +203,25 @@ def show_sign_up():
     username = st.text_input("Username")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    terms = st.checkbox("I accept the Terms of Service and Privacy Policy")
-    if st.button("Create Account"):
-        if terms:
-            create_usertable()
-            existing_users = view_all_users()
-            emails = [user[1] for user in existing_users]
-            usernames = [user[0] for user in existing_users]
+    accept_terms = st.checkbox("I agree to the terms and conditions")
 
-            if email in emails:
-                st.error("Email already registered")
-            elif username in usernames:
-                st.error("Username already taken")
-            else:
-                add_userdata(username, email, password)
-                st.session_state.page = "Home"
-                st.session_state.current_user = username
-                st.success(f"Account created for {username}!")
-        else:
+    if st.button("Create Account"):
+        create_usertable()
+        users = view_all_users()
+        emails = [user[1] for user in users]
+        usernames = [user[0] for user in users]
+
+        if not accept_terms:
             st.error("You must accept the terms to create an account.")
+        elif email in emails:
+            st.error("Email already registered")
+        elif username in usernames:
+            st.error("Username already taken")
+        else:
+            add_userdata(username, email, password)
+            st.session_state.page = "Home"
+            st.session_state.current_user = username
+            st.success(f"Account created for {username}!")
     if st.button("Sign In"):
         st.session_state.page = "Sign In"
 
@@ -190,7 +231,6 @@ if st.session_state.page == "Sign In":
 elif st.session_state.page == "Sign Up":
     show_sign_up()
 else:
-    st.write(f"Welcome {st.session_state.current_user[0]}!")
     show_home_page(st.session_state.current_user[0])
 
 # Styling and layout
@@ -223,28 +263,28 @@ st.markdown("""
     }
     .movie-container {
         display: flex;
-        justify-content: space-between;
+        align-items: flex-start;
         padding: 10px;
         border-bottom: 1px solid #CCCCCC;
     }
     .movie-title {
         font-size: 18px;
         font-weight: bold;
-    }
-    .movie-details {
-        display: flex;
-        flex-direction: row;
+        margin-bottom: 5px;
     }
     .movie-image img {
         border-radius: 10px;
+        width: 100px;  /* Adjust the size of the image */
+        margin-right: 20px;  /* Space between the image and the info */
     }
     .movie-info {
-        margin-left: 10px;
+        flex: 1;
     }
     .edit-link {
         color: #FF9900;
         cursor: pointer;
         text-decoration: underline;
+        margin-top: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
