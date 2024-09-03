@@ -63,6 +63,16 @@ def add_animedata(username, title, rating, state, episodes_watched):
     except Exception as e:
         st.error(f"An error occurred: {e}")
 
+# Function to delete anime data from the table
+def delete_animedata(username, title):
+    try:
+        cur.execute('DELETE FROM movietable WHERE username = ? AND title = ?', (username, title))
+        con.commit()
+    except sqlite3.Error as e:
+        st.error(f"Database error: {e}")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+
 # Function to retrieve user list from the database
 def show_user_list(username):
     cur.execute('SELECT * FROM movietable WHERE username =?', (username,))
@@ -92,12 +102,6 @@ def show_home_page(user_name):
                 background-color: #333;
                 padding: 10px 20px;
                 border-radius: 10px;
-            }
-            .logo-container {
-                flex: 1;
-            }
-            .logo-link img {
-                width: 50px;
             }
             .user-options {
                 flex: 2;
@@ -153,13 +157,11 @@ def show_home_page(user_name):
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown(f"""
-        <div class="header-container">
-            <div class="logo-container">
-                <a href="#" onclick="location.reload();" class="logo-link">
-                    <img src="https://your-logo-url.com/logo.png" alt="Logo">
-                </a>
-            </div>
+    # Display the user options and "My List" button
+    col1, col2 = st.columns([3, 1])  # Adjust the columns for better alignment
+
+    with col1:
+        st.markdown(f"""
             <div class="user-options">
                 <div class="dropdown">
                     <button class="dropbtn">{user_name}</button>
@@ -167,17 +169,20 @@ def show_home_page(user_name):
                         <a href="#" onclick="sign_out();">Sign Out</a>
                     </div>
                 </div>
-                <button class="my-list-button" onclick="document.location.reload()">My List</button>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
+    with col2:
+        if st.button("My List", key="my_list_button"):
+            toggle_watched_list()
+    
     if st.session_state.show_watched_list:
         st.subheader('Watched Movies')
         sorted_movies = sorted(show_user_list(user_name), key=lambda x: -x[2])
         for movie in sorted_movies:
             st.write(f"{movie[1]} - {movie[2]} stars, {movie[4]} episodes watched")
             if st.button(f'Remove {movie[1]} from Watched List', key=f'remove-{movie[1]}'):
+                delete_animedata(user_name, movie[1])  # Remove from database
                 st.session_state.watched_movies = [m for m in st.session_state.watched_movies if m['title'] != movie[1]]
                 st.success(f'{movie[1]} removed from watched list!')
         return
@@ -225,35 +230,49 @@ def show_home_page(user_name):
     page_size = 12
     total_pages = len(filtered_data) // page_size + 1
     st.write("Change Page")
-    current_page = st.number_input("Page", min_value=1, max_value=total_pages, format="%d", placeholder="Load more")
-    start_index = (current_page - 1) * page_size
-    end_index = min(start_index + page_size, len(filtered_data))
+    current_page = st.number_input("Page", min_value=1, max_value=total_pages, step=1)
 
-    for index in range(start_index, end_index):
-        row = filtered_data.iloc[index]
+    start_index = (current_page - 1) * page_size
+    end_index = start_index + page_size
+    paginated_data = filtered_data[start_index:end_index]
+
+    for index, row in paginated_data.iterrows():
+        title = row['Title']
+        is_watched = any(movie['title'] == title for movie in st.session_state.watched_movies)
+
+        if is_watched:
+            if st.button(f'Remove {title} from Watched List', key=f'remove-{index}'):
+                delete_animedata(user_name, title)
+                st.session_state.watched_movies = [movie for movie in st.session_state.watched_movies if movie['title'] != title]
+                st.success(f'{title} removed from watched list!')
+            continue
+
         st.markdown(f"""
             <div class="movie-container">
-                {render_movie_image(row['Image_url'], size="large")}
+                <img src="{row['Image_url']}" class="movie-image">
                 <div class="movie-info">
-                    <div class="movie-title">{row['Title']}</div>
-                    <div>{row['Rating']} stars</div>
-                    <div>Genres: {row['Genre']}</div>
-                    <div>Synopsis: {row['Synopsis']}</div>
+                    <h3>{title}</h3>
+                    <p>Rating: {row['Rating']}</p>
+                    <p>Scored by: {row['Scoredby']}</p>
+                    <p>Type: {row['Type']}</p>
+                    <p>Episodes: {row['Episodes']}</p>
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        
-        create_animetable()  # Ensure table exists before inserting data
-        rating = st.selectbox(f'Rate {row["Title"]}:', [1, 2, 3, 4, 5], key=f'rating-{index}')
+
+        rating = st.selectbox(f'Rate {title}:', [1, 2, 3, 4, 5], key=f'rating-{index}')
         states = ["Continuing", "Completed", "On-Hold", "Dropped", "Plan to Watch"]
-        statebox = st.selectbox(f"State of {row['Title']}", states, key=f'state_{index}')
+        statebox = st.selectbox(f"State of {title}", states, key=f'state_{index}')
         state_index = states.index(statebox)
-        episode_count = st.selectbox(f'Episodes Watched for {row["Title"]}:', range(0, int(row["Episodes"]) + 1), key=f'episodes_{index}')
+        episode_count = st.selectbox(f'Episodes Watched for {title}:', range(0, int(row["Episodes"]) + 1), key=f'episodes_{index}')
         
-        title_check = registered_title_check(user_name, row["Title"])
-        if not title_check and st.button(f'Save Rating and State for {row["Title"]}', key=f'save-{index}'):
-            add_animedata(user_name, row["Title"], rating, state_index, episode_count)
-            st.success('Rating, state, and episodes watched saved!')
+        if st.button(f'Add {title} to Watched List', key=f'add-{index}'):
+            if registered_title_check(user_name, title):
+                st.error(f'{title} is already in your watched list!')
+            else:
+                add_animedata(user_name, title, rating, state_index, episode_count)
+                st.session_state.watched_movies.append({'title': title, 'rating': rating, 'state': state_index, 'episodes_watched': episode_count})
+                st.success(f'{title} added to watched list!')
 
 # User authentication functions
 def create_usertable():
@@ -306,6 +325,22 @@ def show_sign_up():
         st.success("You have successfully created an account")
         st.info("Go to the Sign In page to log in")
 
+# Function to drop table if a correct code is entered
+def drop_table_if_code_matches(table_name, secret_code):
+    if st.button("Drop Table"):
+        input_code = st.text_input("Enter the secret code to drop the table:")
+        if input_code == secret_code:
+            try:
+                cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+                con.commit()
+                st.success(f"Table {table_name} dropped successfully!")
+            except sqlite3.Error as e:
+                st.error(f"Database error: {e}")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+        else:
+            st.error("Incorrect code! Table not dropped.")
+
 # Function to handle page navigation
 def handle_navigation():
     if st.session_state.page == "Sign In":
@@ -318,37 +353,9 @@ def handle_navigation():
         st.session_state.page = "Sign In"
         show_sign_in()
 
-def drop_table_if_code_matches(db_name, table_name, input_code, correct_code):
-    # Check if the input code matches the correct code
-    if input_code == correct_code:
-        try:
-            conn = sqlite3.connect(db_name)
-            cursor = conn.cursor()
-
-            # Drop the table
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-            conn.commit()
-
-            st.success(f"Table '{table_name}' has been dropped successfully.")
-
-        except sqlite3.Error as e:
-            st.error(f"An error occurred: {e}")
-        finally:
-            if conn:
-                conn.close()
-    else:
-        st.error("Input code did not match. Table drop aborted.")
-
 # Main program
 if __name__ == "__main__":
-    # Handle navigation
     handle_navigation()
-
-    # Optional: Drop table based on input code
-    input_code = st.text_input("Enter code to drop the table")
-    correct_code = '1234'  # Set your correct code here
-    if st.button("Drop Table"):
-        drop_table_if_code_matches("Recs_of_D.db", "movietable", input_code, correct_code)
-
-    # Close database connection at the end
-    con.close()
+    # Example usage of drop_table_if_code_matches function
+    drop_table_if_code_matches("movietable", "your_secret_code_here")
+    con.close()  # Close database connection at the end
