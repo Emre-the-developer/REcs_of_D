@@ -273,6 +273,31 @@ def show_home_page(user_name):
                 add_animedata(user_name, title, rating, state_index, episode_count)
                 st.session_state.watched_movies.append({'title': title, 'rating': rating, 'state': state_index, 'episodes_watched': episode_count})
                 st.success(f'{title} added to watched list!')
+        st.markdown("### Filter by State:")
+    states_labels = ["Continuing", "Completed", "On-Hold", "Dropped", "Plan to Watch"]
+    state_movies = {}
+
+    for state in states_labels:
+        if st.button(state):
+            # Retrieve movies for the selected state
+            state_movies[state] = show_user_list_by_state(user_name, states_labels.index(state))
+
+    # Function to retrieve user list by state
+    def show_user_list_by_state(username, state_index):
+        cur.execute('SELECT * FROM movietable WHERE username =? AND state =?', (username, state_index))
+        data = cur.fetchall()
+        return data
+
+    # Display the filtered movies if a state button was clicked
+    for state, movies in state_movies.items():
+        if movies:
+            st.subheader(f"{state} Movies")
+            for movie in movies:
+                st.write(f"{movie[1]} - {movie[2]} stars, {movie[4]} episodes watched")
+                if st.button(f'Remove {movie[1]} from Watched List', key=f'remove-{movie[1]}'):
+                    delete_animedata(user_name, movie[1])
+                    st.session_state.watched_movies = [m for m in st.session_state.watched_movies if m['title'] != movie[1]]
+                    st.success(f'{movie[1]} removed from watched list!')
 
 # User authentication functions
 def create_usertable():
@@ -324,7 +349,7 @@ def show_sign_up():
         add_userdata(new_user, new_email, new_password)
         st.success("You have successfully created an account")
         st.info("Go to the Sign In page to log in")
-
+'''
 # Function to drop table if a correct code is entered
 def drop_table_if_code_matches(table_name, secret_code):
     if st.button("Drop Table"):
@@ -340,7 +365,7 @@ def drop_table_if_code_matches(table_name, secret_code):
                 st.error(f"An error occurred: {e}")
         else:
             st.error("Incorrect code! Table not dropped.")
-
+'''
 # Function to handle page navigation
 def handle_navigation():
     if st.session_state.page == "Sign In":
@@ -357,5 +382,6 @@ def handle_navigation():
 if __name__ == "__main__":
     handle_navigation()
     # Example usage of drop_table_if_code_matches function
-    drop_table_if_code_matches("movietable", "your_secret_code_here")
+    #drop_table_if_code_matches("movietable", "your_secret_code_here")
     con.close()  # Close database connection at the end
+    
