@@ -3,12 +3,13 @@ import pandas as pd
 import streamlit as st
 import sqlite3
 
+
 # Connect to SQLite database
 con = sqlite3.connect("Recs_of_D.db")
 cur = con.cursor()
 
 # Import and check the CSV file
-data = pd.read_csv(r"C:/Users/emref/Desktop/C13digihome/REcs_of_D/REcs_of_D_trydata3.csv")
+data = pd.read_csv("C:/Users/emref/Desktop/C13digihome/REcs_of_D/REcs_of_D_trydata3.csv")
 data_sorted = data.sort_values(by='Scoredby', ascending=False)
 
 # Check for expected columns
@@ -22,7 +23,7 @@ if missing_columns:
 data_sorted['Title'] = data_sorted['Title'].fillna('Unknown Title')
 
 # Set Streamlit configuration
-st.set_page_config(page_title="Movie Recommender", layout="wide")
+#st.set_page_config(page_title="Movie Recommender", layout="wide")
 
 # Initialize session state variables
 if "watched_movies" not in st.session_state:
@@ -89,6 +90,36 @@ def registered_title_check(username, title):
 def render_movie_image(image_url, size="small"):
     width = 200 if size == "large" else 100
     return f'<img src="{image_url}" alt="Movie Image" width="{width}">'
+
+# Function to create the Rec table if it doesn't exist
+def create_Reclist() :
+    cur.execute('CREATE TABLE IF NOT EXISTS rectable(username TEXT, title TEXT, recvalue FLOAT)')
+    con.commit()
+
+# Function to add Reclist data to the table
+def add_Recdata(username, title, recvalue):
+    if username is None or title is None or recvalue is None :
+        st.error("Error: One of the arguments is None")
+        return
+    try:
+        cur.execute('INSERT INTO rectable(username, title, recvalue) VALUES (?, ?, ?)', (username, title, recvalue))
+        con.commit()
+    except sqlite3.Error as e:
+        st.error(f"Database error: {e}")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+
+# Function to retrieve user list from the database
+def show_Rec_user_list(username):
+    cur.execute('SELECT * FROM rectable WHERE username =?', (username,))
+    data = cur.fetchall()
+    return data
+
+# Function to check if a title is already registered for a user
+def Rec_title_check(username, title):
+    cur.execute('SELECT * FROM rectable WHERE username =? AND title =?', (username, title))
+    data = cur.fetchall()
+    return data
 
 # Function to show the home page
 def show_home_page(user_name):
@@ -209,20 +240,15 @@ def show_home_page(user_name):
             }
             #search_input {
                 width: 100%;
-                padding: 10px 10px 10px 35px;
-                border-radius: 20px;
+                padding: 10px 20px 10px 40px;
+                font-size: 18px;
                 border: 2px solid #FF9900;
-                background-color: #333333;
-                color: #FFFFFF;
-                font-size: 16px;
-            }
-            #search_input:focus {
+                border-radius: 5px;
                 outline: none;
-                border-color: #FF6600;
             }
         </style>
     """, unsafe_allow_html=True)
-    
+
     search_query = st.text_input("", key="search_input", label_visibility="collapsed").lower()
     filtered_data = data_sorted[data_sorted['Title'].str.lower().str.contains(search_query)]
 
@@ -272,7 +298,16 @@ def show_home_page(user_name):
             else:
                 add_animedata(user_name, title, rating, state_index, episode_count)
                 st.session_state.watched_movies.append({'title': title, 'rating': rating, 'state': state_index, 'episodes_watched': episode_count})
+                create_Reclist()
+                from REcs_of_D.Recommendation import anime_Recs
+                new_Recs = anime_Recs(title,user_name)
+                print("new Recs print: ",new_Recs)
+                for rec_title, rec_value in new_Recs:
+                    print("username: ", user_name,rec_title,rec_value)
+                    add_Recdata(user_name,rec_title,rec_value)
                 st.success(f'{title} added to watched list!')
+                jkl = show_Rec_user_list(user_name)
+                print(jkl)
         st.markdown("### Filter by State:")
     states_labels = ["Continuing", "Completed", "On-Hold", "Dropped", "Plan to Watch"]
     state_movies = {}
@@ -349,23 +384,7 @@ def show_sign_up():
         add_userdata(new_user, new_email, new_password)
         st.success("You have successfully created an account")
         st.info("Go to the Sign In page to log in")
-'''
-# Function to drop table if a correct code is entered
-def drop_table_if_code_matches(table_name, secret_code):
-    if st.button("Drop Table"):
-        input_code = st.text_input("Enter the secret code to drop the table:")
-        if input_code == secret_code:
-            try:
-                cur.execute(f"DROP TABLE IF EXISTS {table_name}")
-                con.commit()
-                st.success(f"Table {table_name} dropped successfully!")
-            except sqlite3.Error as e:
-                st.error(f"Database error: {e}")
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
-        else:
-            st.error("Incorrect code! Table not dropped.")
-'''
+
 # Function to handle page navigation
 def handle_navigation():
     if st.session_state.page == "Sign In":
@@ -384,4 +403,3 @@ if __name__ == "__main__":
     # Example usage of drop_table_if_code_matches function
     #drop_table_if_code_matches("movietable", "your_secret_code_here")
     con.close()  # Close database connection at the end
-    
