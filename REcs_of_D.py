@@ -3,7 +3,8 @@ import pandas as pd
 import streamlit as st
 import sqlite3
 
-
+from Database1 import *
+from Recommendation import anime_Recs
 # Connect to SQLite database
 con = sqlite3.connect("Recs_of_D.db")
 cur = con.cursor()
@@ -23,7 +24,97 @@ if missing_columns:
 data_sorted['Title'] = data_sorted['Title'].fillna('Unknown Title')
 
 # Set Streamlit configuration
-#st.set_page_config(page_title="Movie Recommender", layout="wide")
+st.set_page_config(page_title="Movie Recommender", layout="wide")
+
+st.markdown("""
+    <style>
+        /* Global background and text color */
+        body {
+            background-color: black;
+            color: white;
+        }
+
+        /* Streamlit main container background color */
+        .main {
+            background-color: black;
+        }
+
+        /* Adjusting text and other elements for dark theme */
+        .stButton button {
+            background-color: #FF9900;
+            color: white;
+        }
+
+        /* Search bar and buttons */
+        .search-container {
+            position: relative;
+            width: 50%;
+            margin-bottom: 20px;
+            color: white;
+        }
+        
+        .search-icon {
+            color: #FF9900;
+            font-size: 20px;
+        }
+
+        #search_input {
+            background-color: #333;
+            color: white;
+            border: 2px solid #FF9900;
+        }
+
+        /* Header styling */
+        .header-container {
+            background-color: #333;
+        }
+
+        .dropbtn {
+            background-color: #333;
+            color: #FF9900;
+        }
+
+        .dropdown-content a {
+            background-color: #444;
+            color: white;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #FF9900;
+            color: black;
+        }
+
+        /* Buttons for Watched List and general button styling */
+        .my-list-button {
+            background-color: #FF9900;
+            color: white;
+        }
+
+        .my-list-button:hover {
+            background-color: #FF6600;
+        }
+
+        /* Movie container styling */
+        .movie-container {
+            background-color: #333;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .movie-image {
+            border-radius: 5px;
+            width: 150px;
+            height: auto;
+        }
+
+        .movie-info {
+            padding-left: 20px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 
 # Initialize session state variables
 if "watched_movies" not in st.session_state:
@@ -46,80 +137,7 @@ def sign_out():
 def toggle_watched_list():
     st.session_state.show_watched_list = not st.session_state.show_watched_list
 
-# Function to create the movie table if it doesn't exist
-def create_animetable():
-    cur.execute('CREATE TABLE IF NOT EXISTS movietable(username TEXT, title TEXT, rating INTEGER, state INTEGER, episodes_watched INTEGER)')
-    con.commit()
 
-# Function to add anime data to the table
-def add_animedata(username, title, rating, state, episodes_watched):
-    if username is None or title is None or rating is None or state is None or episodes_watched is None:
-        st.error("Error: One of the arguments is None")
-        return
-    try:
-        cur.execute('INSERT INTO movietable(username, title, rating, state, episodes_watched) VALUES (?, ?, ?, ?, ?)', (username, title, rating, state, episodes_watched))
-        con.commit()
-    except sqlite3.Error as e:
-        st.error(f"Database error: {e}")
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-
-# Function to delete anime data from the table
-def delete_animedata(username, title):
-    try:
-        cur.execute('DELETE FROM movietable WHERE username = ? AND title = ?', (username, title))
-        con.commit()
-    except sqlite3.Error as e:
-        st.error(f"Database error: {e}")
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-
-# Function to retrieve user list from the database
-def show_user_list(username):
-    cur.execute('SELECT * FROM movietable WHERE username =?', (username,))
-    data = cur.fetchall()
-    return data
-
-# Function to check if a title is already registered for a user
-def registered_title_check(username, title):
-    cur.execute('SELECT * FROM movietable WHERE username =? AND title =?', (username, title))
-    data = cur.fetchall()
-    return data
-
-# Function to render movie images with different sizes
-def render_movie_image(image_url, size="small"):
-    width = 200 if size == "large" else 100
-    return f'<img src="{image_url}" alt="Movie Image" width="{width}">'
-
-# Function to create the Rec table if it doesn't exist
-def create_Reclist() :
-    cur.execute('CREATE TABLE IF NOT EXISTS rectable(username TEXT, title TEXT, recvalue FLOAT)')
-    con.commit()
-
-# Function to add Reclist data to the table
-def add_Recdata(username, title, recvalue):
-    if username is None or title is None or recvalue is None :
-        st.error("Error: One of the arguments is None")
-        return
-    try:
-        cur.execute('INSERT INTO rectable(username, title, recvalue) VALUES (?, ?, ?)', (username, title, recvalue))
-        con.commit()
-    except sqlite3.Error as e:
-        st.error(f"Database error: {e}")
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-
-# Function to retrieve user list from the database
-def show_Rec_user_list(username):
-    cur.execute('SELECT * FROM rectable WHERE username =?', (username,))
-    data = cur.fetchall()
-    return data
-
-# Function to check if a title is already registered for a user
-def Rec_title_check(username, title):
-    cur.execute('SELECT * FROM rectable WHERE username =? AND title =?', (username, title))
-    data = cur.fetchall()
-    return data
 
 # Function to show the home page
 def show_home_page(user_name):
@@ -249,8 +267,15 @@ def show_home_page(user_name):
         </style>
     """, unsafe_allow_html=True)
 
+    Recs = show_Rec_user_list(user_name)
+    Recs_df = pd.DataFrame([{"Title": rec[1], "recvalue": rec[2]} for rec in Recs])
+    Recs_df.sort_values(by='recvalue', ascending=False)
+    # Merge the sorted Recs with data_sorted based on 'Title'
+    data_sorted['Episodes'] = data_sorted['Episodes'].fillna(1).astype(int)
+    merged_data = pd.merge(Recs_df, data_sorted, on='Title', how='inner')
+
     search_query = st.text_input("", key="search_input", label_visibility="collapsed").lower()
-    filtered_data = data_sorted[data_sorted['Title'].str.lower().str.contains(search_query)]
+    filtered_data = merged_data[merged_data['Title'].str.lower().str.contains(search_query)]
 
     # Pagination setup
     page_size = 12
@@ -299,7 +324,6 @@ def show_home_page(user_name):
                 add_animedata(user_name, title, rating, state_index, episode_count)
                 st.session_state.watched_movies.append({'title': title, 'rating': rating, 'state': state_index, 'episodes_watched': episode_count})
                 create_Reclist()
-                from REcs_of_D.Recommendation import anime_Recs
                 new_Recs = anime_Recs(title,user_name)
                 print("new Recs print: ",new_Recs)
                 for rec_title, rec_value in new_Recs:
@@ -334,24 +358,6 @@ def show_home_page(user_name):
                     st.session_state.watched_movies = [m for m in st.session_state.watched_movies if m['title'] != movie[1]]
                     st.success(f'{movie[1]} removed from watched list!')
 
-# User authentication functions
-def create_usertable():
-    cur.execute('CREATE TABLE IF NOT EXISTS userstable(username TEXT, email TEXT, password TEXT)')
-    con.commit()
-
-def add_userdata(username, email, password):
-    cur.execute('INSERT INTO userstable(username, email, password) VALUES (?, ?, ?)', (username, email, password))
-    con.commit()
-
-def login_user(username, password):
-    cur.execute('SELECT * FROM userstable WHERE username =? AND password =?', (username, password))
-    data = cur.fetchall()
-    return data
-
-def view_all_users():
-    cur.execute('SELECT * FROM userstable')
-    data = cur.fetchall()
-    return data
 
 # Function to show sign-in page
 def show_sign_in():
@@ -398,7 +404,7 @@ def handle_navigation():
         show_sign_in()
 
 # Main program
-if __name__ == "__main__":
+if _name_ == "_main_":
     handle_navigation()
     # Example usage of drop_table_if_code_matches function
     #drop_table_if_code_matches("movietable", "your_secret_code_here")
