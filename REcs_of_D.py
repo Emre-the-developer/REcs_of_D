@@ -9,6 +9,7 @@ from Recommendation import anime_Recs
 con = sqlite3.connect("Recs_of_D.db")
 cur = con.cursor()
 
+
 # Import and check the CSV file
 data = pd.read_csv("C:/Users/emref/Desktop/C13digihome/REcs_of_D/REcs_of_D_trydata3.csv")
 data_sorted = data.sort_values(by='Scoredby', ascending=False)
