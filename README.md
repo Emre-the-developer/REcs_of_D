@@ -11,7 +11,8 @@ This is a webapp that allows you to save, rate and keep track of your anime list
 main libraries: 
 - pandas
 - streamlit
-- ...
+- time
+- sqlite
 
 
 
