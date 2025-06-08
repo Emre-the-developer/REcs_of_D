@@ -12,7 +12,7 @@ main libraries:
 - pandas
 - streamlit
 - time
-- sqlite
+- sqlite3
 
 
 
